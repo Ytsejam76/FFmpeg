@@ -126,6 +126,7 @@ typedef struct X264Context {
     int roi_warned;
 
     int mb_info;
+    int pskip_bypass;
 } X264Context;
 
 static void X264_log(void *p, int level, const char *fmt, va_list args)
@@ -356,6 +357,15 @@ static int setup_mb_info(AVCodecContext *ctx, x264_picture_t *pic,
     const AVVideoRect *mbinfo_rects;
     int nb_rects;
     uint8_t *mbinfo;
+    /* The constant-hinted macroblocks are flagged either as the regular
+     * mb_info constant hint or, when the pskip bypass is enabled, as the
+     * stronger perfect-P_SKIP hint. It is the caller's responsibility to only
+     * hint macroblocks that are genuinely unchanged; the wrapper merely
+     * forwards the request. */
+    uint8_t constant_flag = X264_MBINFO_CONSTANT;
+    X264Context *x4 = ctx->priv_data;
+    if (x4->pskip_bypass)
+        constant_flag = X264_MBINFO_PERFECT_P_SKIP;
 
     mbinfo_rects = (const AVVideoRect *)av_video_hint_rects(info);
     nb_rects = info->nb_rects;
@@ -379,9 +389,9 @@ static int setup_mb_info(AVCodecContext *ctx, x264_picture_t *pic,
     }                                                                   \
 
     if (info->type == AV_VIDEO_HINT_TYPE_CHANGED) {
-        COMPUTE_MBINFO(X264_MBINFO_CONSTANT, 0, mbinfo_compute_changed_coords);
+        COMPUTE_MBINFO(constant_flag, 0, mbinfo_compute_changed_coords);
     } else /* if (info->type == AV_VIDEO_HINT_TYPE_CHANGED) */ {
-        COMPUTE_MBINFO(0, X264_MBINFO_CONSTANT, mbinfo_compute_constant_coords);
+        COMPUTE_MBINFO(0, constant_flag, mbinfo_compute_constant_coords);
     }
 
     pic->prop.mb_info = mbinfo;
@@ -1395,6 +1405,9 @@ static av_cold int X264_init(AVCodecContext *avctx)
 
     x4->params.analyse.b_mb_info = x4->mb_info;
 
+    if (x4->pskip_bypass)
+        x4->params.analyse.b_pskip_bypass = x4->pskip_bypass;
+
     // update AVCodecContext with x264 parameters
     avctx->has_b_frames = x4->params.i_bframe ?
         x4->params.i_bframe_pyramid ? 2 : 1 : 0;
@@ -1570,6 +1583,7 @@ static const AVOption options[] = {
     { "udu_sei",      "Use user data unregistered SEI if available",      OFFSET(udu_sei),  AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
     { "x264-params",  "Override the x264 configuration using a :-separated list of key=value parameters", OFFSET(x264_params), AV_OPT_TYPE_DICT, { 0 }, 0, 0, VE },
     { "mb_info",      "Set mb_info data through AVSideData, only useful when used from the API", OFFSET(mb_info), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { "pskip_bypass", "Enable the mb_info-driven perfect P_SKIP bypass; marks constant-hinted macroblocks for the fast path (requires mb_info)", OFFSET(pskip_bypass), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { NULL },
 };
 
