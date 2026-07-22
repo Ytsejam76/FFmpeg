@@ -359,12 +359,14 @@ static int setup_mb_info(AVCodecContext *ctx, x264_picture_t *pic,
     uint8_t *mbinfo;
     /* The constant-hinted macroblocks are flagged either as the regular
      * mb_info constant hint or, when the pskip bypass is enabled, as the
-     * stronger perfect-P_SKIP hint. It is the caller's responsibility to only
-     * hint macroblocks that are genuinely unchanged; the wrapper merely
-     * forwards the request. */
+     * stronger perfect-P_SKIP hint. Key off the effective x264 parameter (not
+     * the AVOption backing field) so that enabling the bypass either through
+     * the -pskip_bypass option or through -x264opts/-x264-params behaves
+     * identically. It is the caller's responsibility to only hint macroblocks
+     * that are genuinely unchanged; the wrapper merely forwards the request. */
     uint8_t constant_flag = X264_MBINFO_CONSTANT;
     X264Context *x4 = ctx->priv_data;
-    if (x4->pskip_bypass)
+    if (x4->params.analyse.b_pskip_bypass)
         constant_flag = X264_MBINFO_PERFECT_P_SKIP;
 
     mbinfo_rects = (const AVVideoRect *)av_video_hint_rects(info);
